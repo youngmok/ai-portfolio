@@ -1,0 +1,44 @@
+---
+title: "Claude Code로 Spring Batch 프로젝트 구축하기"
+description: "Spring Batch 6 마이그레이션부터 MyBatis 연동까지, AI와 함께한 백엔드 프로젝트 개발기"
+date: "2026-02-10"
+tags: ["Spring Batch", "Java", "Claude Code", "Backend"]
+aiTools: ["Claude Code"]
+published: true
+relatedProject: "batch-app"
+---
+
+## Spring Batch 6, 무엇이 달라졌나
+
+Spring Batch 6은 Spring Boot 4와 함께 큰 변화를 가져왔습니다.
+가장 눈에 띄는 변경점은 **패키지 구조의 전면 개편**입니다.
+
+```java
+// Before (Spring Batch 5)
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+
+// After (Spring Batch 6)
+import org.springframework.batch.core.job.Job;
+import org.springframework.batch.core.step.Step;
+```
+
+## Claude Code와의 마이그레이션
+
+Claude Code의 도움으로 마이그레이션을 체계적으로 진행했습니다.
+
+### 1단계: 변경점 파악
+Claude에게 Spring Batch 5 → 6의 변경점을 정리해달라고 요청했습니다.
+패키지 이동, deprecated API, 새로운 패턴 등을 표로 정리받아 참고했습니다.
+
+### 2단계: 코드 수정
+가장 큰 변화는 `JobLauncher`가 deprecated 되고 `JobOperator`를 사용하게 된 것입니다.
+
+### 3단계: 테스트
+`@SpringBatchTest`를 활용한 통합 테스트로 마이그레이션 결과를 검증했습니다.
+
+## 배운 점
+
+- AI는 마이그레이션 가이드 역할을 훌륭히 수행합니다
+- 단, 최신 버전의 정확한 API는 직접 확인이 필요합니다
+- 체계적인 접근(파악 → 수정 → 검증)이 중요합니다
