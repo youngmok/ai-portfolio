@@ -1,0 +1,194 @@
+---
+title: "신용대출 시스템 구축기 — 상태 머신, DSR 심사, 상환 계산까지"
+description: "Spring Boot + Next.js로 대출 전 라이프사이클을 구현한 과정. 11단계 상태 머신 설계, 신용점수 자동 산정, BigDecimal 금융 계산 패턴을 정리합니다."
+date: "2026-02-19"
+tags: ["Spring Boot", "Java", "Next.js", "금융", "상태 머신", "Claude Code"]
+aiTools: ["Claude Code"]
+published: true
+relatedProject: "credit-loan-system"
+---
+
+## 왜 대출 시스템인가
+
+금융 도메인은 **상태 전이의 정확성**과 **수치 계산의 정밀도**가 핵심입니다.
+잘못된 상태 변경이나 반올림 오류 하나가 실제 서비스에서는 큰 문제가 됩니다.
+이 두 가지를 코드로 어떻게 다루는지 직접 구현해보고 싶었습니다.
+
+---
+
+## 핵심 설계 1: 대출 상태 머신
+
+대출 하나는 총 11개의 상태를 가집니다.
+
+```
+DRAFT → APPLIED → REVIEWING → APPROVED → EXECUTED → ACTIVE → COMPLETED
+                            ↘ REJECTED    ↓ CANCELLED  ↓          ↓
+                                                     OVERDUE   EARLY_REPAID
+                                                        ↓
+                                                    DEFAULTED
+```
+
+### 상태 전이 규칙을 enum 안에 캡슐화
+
+처음엔 서비스 레이어에 `if (status == APPLIED && target == REVIEWING)` 같은 분기를 넣으려 했습니다.
+하지만 상태가 늘어날수록 관리가 어려워지므로, **전이 규칙을 `LoanStatus` enum 안에 캡슐화**했습니다.
+
+```java
+public enum LoanStatus {
+    DRAFT, APPLIED, REVIEWING, APPROVED, REJECTED,
+    EXECUTED, CANCELLED, ACTIVE, COMPLETED, OVERDUE, DEFAULTED, EARLY_REPAID;
+
+    public boolean canTransitionTo(LoanStatus target) {
+        return switch (this) {
+            case DRAFT     -> target == APPLIED;
+            case APPLIED   -> target == REVIEWING;
+            case REVIEWING -> target == APPROVED || target == REJECTED;
+            case APPROVED  -> target == EXECUTED || target == CANCELLED;
+            case EXECUTED  -> target == ACTIVE;
+            case ACTIVE    -> target == COMPLETED || target == OVERDUE || target == EARLY_REPAID;
+            case OVERDUE   -> target == ACTIVE || target == DEFAULTED;
+            default        -> false;
+        };
+    }
+}
+```
+
+서비스에서는 단순히 검증만 합니다:
+
+```java
+private void validateStatusTransition(LoanStatus current, LoanStatus target) {
+    if (!current.canTransitionTo(target)) {
+        throw new InvalidStatusTransitionException(current, target);
+    }
+}
+```
+
+덕분에 새 상태를 추가할 때 enum 하나만 수정하면 됩니다.
+
+### 모든 상태 변경을 이력으로 기록
+
+```java
+recordStatusHistory("LOAN_APPLICATION", applicationId,
+    LoanStatus.REVIEWING.name(), newStatus.name(),
+    "SYSTEM", "심사 완료: " + result);
+```
+
+`status_history` 테이블에 `from_status`, `to_status`, `changed_by`, `reason`을 기록해
+언제 누가 어떤 이유로 상태를 바꿨는지 추적할 수 있습니다.
+
+---
+
+## 핵심 설계 2: 신용 심사 자동화
+
+규칙 기반 신용 심사 엔진을 직접 구현했습니다.
+
+### 신용점수 산정 로직
+
+```
+점수 = 500 (기본)
+     + min(연소득 / 1,000만원 × 50, 300)  // 소득 기여 (최대 300점)
+     + 고용형태 점수                        // 정규직 +100, 무직 -50
+     → 0~1000 범위로 클램핑
+```
+
+### DSR(총부채원리금상환비율) 검증
+
+```java
+// DSR = (기존 대출 연상환액 + 신규 대출 연상환액) / 연소득 × 100
+BigDecimal dsrRatio = totalAnnualRepayment
+    .divide(customer.getAnnualIncome(), 4, RoundingMode.HALF_UP)
+    .multiply(new BigDecimal("100"))
+    .setScale(2, RoundingMode.HALF_UP);
+
+if (dsrRatio.compareTo(new BigDecimal("40")) > 0) {
+    rejectionReasons.add("DSR 비율 초과 (" + dsrRatio + "%)");
+}
+```
+
+DSR 40% 초과 또는 신용점수 500 미만이면 거절, 두 조건 모두 해당하면 이유를 합쳐서 반환합니다.
+
+---
+
+## 핵심 설계 3: 상환 스케줄 계산
+
+3가지 상환 방식을 `RepaymentCalculator` 유틸 클래스로 구현했습니다.
+
+### 원리금균등상환 (가장 복잡)
+
+PMT 공식: `P × r × (1+r)^n / ((1+r)^n - 1)`
+
+```java
+// (1+r)^n — MathContext(20)으로 정밀도 확보
+BigDecimal onePlusRPowN = BigDecimal.ONE.add(monthlyRate).pow(termMonths, MC);
+
+BigDecimal numerator = principal.multiply(monthlyRate, MC).multiply(onePlusRPowN, MC);
+BigDecimal denominator = onePlusRPowN.subtract(BigDecimal.ONE);
+
+return numerator.divide(denominator, SCALE, RoundingMode.HALF_UP);
+```
+
+마지막 회차는 부동소수점 누적 오차를 없애기 위해 **잔여 원금을 전액 상환**하도록 처리합니다.
+
+### 왜 BigDecimal인가
+
+```java
+// double: 부동소수점 오차
+System.out.println(0.1 + 0.2); // 0.30000000000000004
+
+// BigDecimal: 정확한 금융 계산
+new BigDecimal("0.1").add(new BigDecimal("0.2")); // 0.3
+```
+
+금융 계산에서 `double`을 쓰면 매월 상환액에 1~2원씩 오차가 누적되어
+만기 시 잔액이 0이 되지 않는 문제가 생깁니다.
+
+---
+
+## 프론트엔드: Next.js App Router
+
+### 페이지 구성
+
+```
+/                              대시보드 (통계 카드 + 최근 활동)
+/loans/apply                   대출 신청서 작성
+/loans/applications            신청 목록
+/loans/applications/[id]       신청 상세 + 심사 결과
+/loans/contracts               계약 목록
+/loans/contracts/[id]          계약 상세 + 상환 스케줄
+/loans/contracts/[id]/repay    상환 처리
+```
+
+### 서버 컴포넌트에서 데이터 패칭
+
+```typescript
+// app/loans/applications/[id]/page.tsx (서버 컴포넌트)
+export default async function ApplicationDetailPage({ params }) {
+  const application = await fetchApplicationDetail(params.id);
+  return <ApplicationDetail data={application} />;
+}
+```
+
+목록 페이지는 서버 컴포넌트로 초기 데이터를 받고,
+상환 처리처럼 인터랙션이 필요한 부분은 `"use client"` 컴포넌트로 분리했습니다.
+
+---
+
+## Claude Code와 함께한 과정
+
+이 프로젝트는 **Claude Code**와 함께 설계부터 구현까지 진행했습니다.
+
+특히 도움이 된 부분:
+
+- **상태 머신 설계**: `canTransitionTo` 패턴으로 enum 안에 캡슐화하는 아이디어
+- **RepaymentCalculator 구현**: PMT 공식의 BigDecimal 정밀도 처리, 마지막 회차 잔여 원금 처리
+- **DSR 계산 로직**: 기존 대출 상환액 추정 방식 설계
+- **GlobalExceptionHandler**: 비즈니스 예외를 일관된 응답 포맷으로 변환하는 구조
+
+---
+
+## 배운 점
+
+- **상태 전이 규칙은 도메인 객체 안에**: 서비스 레이어에 분기를 두면 규칙이 흩어진다
+- **BigDecimal은 금융 계산의 기본**: `double`은 절대 사용하지 않는다
+- **마지막 회차 처리가 핵심**: 수학적 정확성보다 잔액 = 0이 되는 것이 더 중요
+- **상태 이력 테이블**: 장애 분석과 감사에 필수, 처음부터 설계에 포함해야 한다

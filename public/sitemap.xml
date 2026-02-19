@@ -27,6 +27,11 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/credit-loan-system/</loc>
+    <lastmod>2026-02</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://youngmok.github.io/ai-portfolio/projects/telegram-claude-agent/</loc>
     <lastmod>2026-02</lastmod>
     <priority>0.8</priority>
@@ -39,6 +44,11 @@
   <url>
     <loc>https://youngmok.github.io/ai-portfolio/blog/building-batch-app-with-claude/</loc>
     <lastmod>2026-02-10</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-credit-loan-system/</loc>
+    <lastmod>2026-02-19</lastmod>
     <priority>0.8</priority>
   </url>
   <url>

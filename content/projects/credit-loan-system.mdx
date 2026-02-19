@@ -1,0 +1,112 @@
+---
+title: "신용대출 통합 관리 시스템"
+description: "대출 신청부터 심사·실행·상환까지 전 과정을 처리하는 풀스택 금융 시스템. 신용점수 자동 산정, DSR 검증, 3종 상환 방식을 지원."
+thumbnail: "/images/credit-loan-thumb.svg"
+techStack: ["Java 17", "Spring Boot 3", "MyBatis", "PostgreSQL", "Next.js 15", "TypeScript", "Tailwind CSS", "Docker"]
+aiTools: ["Claude Code"]
+category: "Fullstack"
+featured: true
+status: "completed"
+githubUrl: "https://github.com/username/credit-loan-system"
+startDate: "2026-02"
+lastUpdated: "2026-02"
+---
+
+## 프로젝트 개요
+
+대출 신청 접수부터 신용 심사, 계약 실행, 상환 관리까지 **대출 전 라이프사이클**을 처리하는 풀스택 시스템입니다.
+백엔드는 Spring Boot + MyBatis, 프론트엔드는 Next.js 15 App Router로 구성됩니다.
+
+## 핵심 기능
+
+### 대출 상태 머신 (11단계)
+
+```
+DRAFT → APPLIED → REVIEWING → APPROVED/REJECTED
+                                    ↓
+                               EXECUTED → ACTIVE → COMPLETED
+                                               ↓         ↓
+                                            OVERDUE  EARLY_REPAID
+                                               ↓
+                                           DEFAULTED
+```
+
+잘못된 상태 전이는 `InvalidStatusTransitionException`으로 즉시 차단하며,
+모든 상태 변경은 `status_history` 테이블에 기록됩니다.
+
+### 신용 심사 엔진 (자동)
+
+점수 = 기본(500) + 소득 기여 + 고용형태 기여
+
+| 고용형태 | 점수 |
+|---------|------|
+| 정규직 | +100 |
+| 계약직 | +50 |
+| 자영업 | +30 |
+| 프리랜서 | +10 |
+| 무직 | -50 |
+
+- 소득 기여: `연소득 / 천만원 × 50` (최대 +300)
+- **DSR 40% 초과** 또는 **신용점수 500 미만** → 자동 거절
+- 승인 시 신용등급(CreditGrade)에 따라 금리 자동 산정
+
+### 3종 상환 방식
+
+| 방식 | 설명 |
+|------|------|
+| 원리금균등상환 | PMT 공식으로 매월 동일 납부 |
+| 원금균등상환 | 매월 원금 균등 + 잔액이자 |
+| 만기일시상환 | 매월 이자만, 만기에 원금 일시 |
+
+`RepaymentCalculator`가 전체 회차 스케줄을 `BigDecimal`(소수점 정밀도 보장)로 생성합니다.
+
+## 화면 구성 (Next.js)
+
+- **대시보드** — 핵심 지표 카드 + 최근 활동 피드
+- **대출 신청 목록** — 상태별 필터링, 상세 조회
+- **대출 신청서 작성** — 고객 정보 + 희망 조건 입력
+- **계약 목록 / 상세** — 상환 스케줄 테이블
+- **상환 처리** — 상환 옵션 선택 → 확인 모달 → 결과
+
+## API 구조
+
+```
+GET/POST  /api/customers
+POST      /api/loan-applications
+GET       /api/loan-applications/{id}
+POST      /api/loan-applications/{id}/assess   ← 신용 심사 실행
+POST      /api/loan-applications/{id}/execute  ← 대출 실행 → 계약 생성
+GET/POST  /api/loan-contracts
+POST      /api/loan-contracts/{id}/repay       ← 상환 처리
+GET       /api/dashboard
+```
+
+## 기술적 하이라이트
+
+### BigDecimal 금융 계산
+
+금융 도메인 특성상 `double` 대신 `BigDecimal`로 모든 금액·금리 계산을 처리했습니다.
+
+```java
+// PMT = P * r * (1+r)^n / ((1+r)^n - 1)
+BigDecimal onePlusR = BigDecimal.ONE.add(monthlyRate);
+BigDecimal onePlusRPowN = onePlusR.pow(termMonths, MC); // MathContext(20)
+BigDecimal numerator = principal.multiply(monthlyRate, MC).multiply(onePlusRPowN, MC);
+BigDecimal denominator = onePlusRPowN.subtract(BigDecimal.ONE);
+return numerator.divide(denominator, SCALE, RoundingMode.HALF_UP);
+```
+
+### 전역 예외 처리
+
+`@RestControllerAdvice`의 `GlobalExceptionHandler`가 비즈니스 예외를 일관된 `ApiResponse` 형태로 반환합니다.
+
+### Docker Compose 통합
+
+```yaml
+services:
+  db:      PostgreSQL 16
+  backend: Spring Boot (8080)
+  frontend: Next.js (3000)
+```
+
+`docker compose up` 한 번으로 전체 스택 실행이 가능합니다.
