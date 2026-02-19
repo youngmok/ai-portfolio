@@ -1,0 +1,56 @@
+<svg width="1200" height="675" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d2137"/>
+      <stop offset="100%" style="stop-color:#0a0a1a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <!-- Grid pattern -->
+  <g opacity="0.07">
+    <line x1="0" y1="0" x2="0" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="100" y1="0" x2="100" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="200" y1="0" x2="200" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="300" y1="0" x2="300" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="400" y1="0" x2="400" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="500" y1="0" x2="500" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="600" y1="0" x2="600" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="700" y1="0" x2="700" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="800" y1="0" x2="800" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="900" y1="0" x2="900" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="1000" y1="0" x2="1000" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="1100" y1="0" x2="1100" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="100" x2="1200" y2="100" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="200" x2="1200" y2="200" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="300" x2="1200" y2="300" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="400" x2="1200" y2="400" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="500" x2="1200" y2="500" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="600" x2="1200" y2="600" stroke="#fff" stroke-width="1"/>
+  </g>
+  <!-- Flow: Telegram -> Claude -> PC -->
+  <g opacity="0.18">
+    <rect x="80" y="255" width="200" height="80" rx="12" fill="#229ED9"/>
+    <rect x="500" y="255" width="200" height="80" rx="12" fill="#a855f7"/>
+    <rect x="920" y="255" width="200" height="80" rx="12" fill="#22c55e"/>
+    <line x1="280" y1="295" x2="500" y2="295" stroke="#60a5fa" stroke-width="3"/>
+    <line x1="700" y1="295" x2="920" y2="295" stroke="#60a5fa" stroke-width="3"/>
+    <polygon points="493,288 500,295 493,302" fill="#60a5fa"/>
+    <polygon points="913,288 920,295 913,302" fill="#60a5fa"/>
+  </g>
+  <!-- Robot/bot icon symbol -->
+  <text x="600" y="270" font-family="monospace" font-size="100" fill="#a855f7" opacity="0.18" text-anchor="middle">⚡</text>
+  <!-- Title -->
+  <text x="600" y="375" font-family="system-ui, sans-serif" font-size="46" font-weight="bold" fill="#f1f5f9" text-anchor="middle">Telegram Claude Agent</text>
+  <text x="600" y="430" font-family="system-ui, sans-serif" font-size="26" fill="#94a3b8" text-anchor="middle">로컬 PC 원격 AI 에이전트</text>
+  <!-- Tech badges -->
+  <rect x="290" y="470" width="110" height="32" rx="16" fill="#1e1b4b" opacity="0.7"/>
+  <text x="345" y="491" font-family="system-ui, sans-serif" font-size="14" fill="#a5b4fc" text-anchor="middle">Python 3.11</text>
+  <rect x="418" y="470" width="130" height="32" rx="16" fill="#1e1b4b" opacity="0.7"/>
+  <text x="483" y="491" font-family="system-ui, sans-serif" font-size="14" fill="#a5b4fc" text-anchor="middle">Claude CLI</text>
+  <rect x="566" y="470" width="120" height="32" rx="16" fill="#1e1b4b" opacity="0.7"/>
+  <text x="626" y="491" font-family="system-ui, sans-serif" font-size="14" fill="#a5b4fc" text-anchor="middle">Telegram</text>
+  <rect x="704" y="470" width="100" height="32" rx="16" fill="#1e1b4b" opacity="0.7"/>
+  <text x="754" y="491" font-family="system-ui, sans-serif" font-size="14" fill="#a5b4fc" text-anchor="middle">Docker</text>
+  <rect x="822" y="470" width="90" height="32" rx="16" fill="#1e1b4b" opacity="0.7"/>
+  <text x="867" y="491" font-family="system-ui, sans-serif" font-size="14" fill="#a5b4fc" text-anchor="middle">Pydantic</text>
+</svg>

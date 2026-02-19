@@ -1,0 +1,136 @@
+---
+title: "텔레그램으로 집 PC 원격 제어하기 — Claude CLI 에이전트 구축기"
+description: "python-telegram-bot + Claude CLI subprocess 조합으로 자연어로 PC를 제어하는 개인 AI 에이전트를 만든 과정"
+date: "2026-02-19"
+tags: ["Python", "Claude CLI", "Telegram Bot", "AI Agent", "Claude Code"]
+aiTools: ["Claude Code", "Claude Sonnet 4.6"]
+published: true
+relatedProject: "telegram-claude-agent"
+---
+
+## 만든 이유
+
+집 밖에서 PC 작업이 필요할 때마다 SSH나 원격 데스크톱을 열기가 번거로웠습니다.
+"텔레그램으로 메시지 보내면 PC가 알아서 해주면 안 될까?" 에서 시작한 프로젝트입니다.
+
+## 아이디어: Claude CLI를 두뇌로 쓰기
+
+처음엔 직접 도구 실행 로직을 짜려 했지만, 이미 Claude CLI가 Bash, Read, Write, Edit 같은 도구를 완벽하게 처리해줍니다.
+그렇다면 Claude CLI를 **서브프로세스**로 실행하고, 텔레그램을 입출력 인터페이스로 만들면 됩니다.
+
+```
+사용자 → Telegram 메시지 → Python Bot → Claude CLI → PC 실행 → 결과 반환
+```
+
+## Claude CLI stream-json의 발견
+
+가장 중요한 발견은 `--output-format stream-json` 옵션입니다.
+
+```bash
+claude -p "현재 디렉토리 파일 목록 보여줘" \
+  --output-format stream-json \
+  --model claude-sonnet-4-6
+```
+
+이 모드에서 Claude CLI는 실행 중 발생하는 모든 이벤트를 JSON 줄로 스트리밍합니다:
+
+```json
+{"type":"system","session_id":"sess_abc123"}
+{"type":"assistant","message":{"content":[{"type":"text","text":"확인해보겠습니다."}]}}
+{"type":"tool_use","tool":"Bash","input":{"command":"ls -la"}}
+{"type":"tool_result","tool":"Bash","output":"total 32\n..."}
+{"type":"result","result":"현재 디렉토리에는 ...", "session_id":"sess_abc123"}
+```
+
+이 스트림을 파싱하면 도구 호출 과정을 실시간으로 추적하고, 사용자에게 진행 상황을 알릴 수 있습니다.
+
+## 세션 유지 — 대화 컨텍스트 살리기
+
+`result` 이벤트에서 `session_id`를 저장해두면, 다음 메시지에서 `--resume`으로 재개할 수 있습니다.
+
+```python
+# 저장
+store.save(user_id, session_id)
+
+# 재개
+cmd.extend(["--resume", existing_session])
+```
+
+이 덕분에 "아까 빌드한 거 테스트도 실행해줘"처럼 이전 컨텍스트를 이어받는 자연스러운 대화가 가능합니다.
+`/new` 명령으로 세션을 초기화할 수도 있습니다.
+
+## Jarvis 시스템 프롬프트 설계
+
+에이전트 동작을 제어하는 핵심은 시스템 프롬프트입니다.
+`--append-system-prompt` 플래그로 Claude CLI의 기본 프롬프트에 덧붙입니다.
+
+설계 원칙:
+1. **항상 한국어로** — 스마트폰에서 편하게 소통
+2. **말만 하지 말고 반드시 실행** — "해드리겠습니다" 금지, 도구 호출 필수
+3. **출력 요약** — 긴 터미널 출력은 Telegram 4096자 제한에 걸림
+4. **위험 명령 거부** — `rm -rf /`, `shutdown` 등 차단 목록 명시
+
+```python
+SYSTEM_PROMPT = """You are "Jarvis", a local PC remote agent...
+## CRITICAL: Always Use Tools
+- When asked to run a command → use Bash tool
+- NEVER say "I did it" without actually calling a tool
+"""
+```
+
+## 보안 설계
+
+개인 PC를 인터넷에 노출하는 만큼 보안이 중요합니다.
+
+### 1. User ID 화이트리스트
+```python
+def is_authorized(user_id: int) -> bool:
+    allowed = get_settings().get_allowed_user_ids()
+    return user_id in allowed
+```
+`ALLOWED_USER_IDS` 환경변수에 허용할 Telegram User ID만 등록합니다.
+
+### 2. 감사 로그
+모든 도구 호출을 `logs/audit.log`에 기록합니다.
+나중에 "언제 어떤 명령이 실행됐는지" 추적할 수 있습니다.
+
+### 3. 위험 명령 차단
+시스템 프롬프트에 금지 명령 목록을 명시하여 Claude가 실행을 거부하도록 합니다.
+
+## Claude Code로 구현한 과정
+
+이 프로젝트는 **Claude Code**와 함께 설계하고 구현했습니다.
+
+특히 유용했던 부분:
+- `stream-json` 파싱 로직: 이벤트 타입별 처리 구조 설계
+- Pydantic Settings 모델: 환경변수 검증 및 타입 안전성
+- 비동기 subprocess 처리: `asyncio.create_subprocess_exec` 패턴
+- 에러 핸들링: 세션 재개 실패 시 새 세션으로 폴백
+
+## 실제 사용 예시
+
+```
+나: 배치 앱 빌드 상태 확인해줘
+Jarvis: 🔧 Gradle 빌드 확인 중...
+        ✅ 빌드 성공 (BUILD SUCCESSFUL in 23s)
+        테스트 16개 통과, 0개 실패
+
+나: 최근 로그 파일 보여줘
+Jarvis: logs/audit.log 최근 10줄:
+        [2026-02-19 08:01] claude_cli: started
+        [2026-02-19 08:01] Bash: ls -la
+        ...
+```
+
+## 배운 점
+
+- **Claude CLI는 강력한 에이전트 런타임**: 도구 실행, 에러 처리, 컨텍스트 관리를 이미 다 해준다
+- **stream-json 모드**: 진행 상황 추적과 도구 호출 로깅에 필수
+- **시스템 프롬프트가 동작을 결정**: 에이전트의 페르소나와 제약을 정밀하게 제어 가능
+- **보안은 최소 권한 원칙**: 허용된 도구만, 허용된 사용자만
+
+## 앞으로의 계획
+
+- 도구 호출 알림 (실행 중 진행상황 Telegram 전송)
+- 파일 업로드/다운로드 지원
+- 예약 실행 (크론 형태로 배치 앱 수동 트리거)

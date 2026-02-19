@@ -1,43 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://username.github.io/ai-portfolio/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/</loc>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/projects/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/</loc>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/blog/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/</loc>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/about/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/about/</loc>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/projects/ai-portfolio/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/ai-portfolio/</loc>
     <lastmod>2026-02</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/projects/batch-app/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/batch-app/</loc>
     <lastmod>2026-02</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/blog/building-batch-app-with-claude/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/telegram-claude-agent/</loc>
+    <lastmod>2026-02</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-batch-app-with-claude/</loc>
     <lastmod>2026-02-10</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/blog/deploying-to-github-pages/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-telegram-claude-agent/</loc>
+    <lastmod>2026-02-19</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/deploying-to-github-pages/</loc>
     <lastmod>2026-02-13</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://username.github.io/ai-portfolio/blog/hello-world/</loc>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/hello-world/</loc>
     <lastmod>2026-02-13</lastmod>
     <priority>0.8</priority>
   </url>

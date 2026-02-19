@@ -1,0 +1,121 @@
+---
+title: "텔레그램 기반 로컬 PC 원격 AI 에이전트"
+description: "텔레그램 메시지로 집 PC를 원격 제어하는 AI 에이전트. Claude CLI를 서브프로세스로 구동하여 파일 관리·명령 실행을 자연어로 처리."
+thumbnail: "/images/telegram-agent-thumb.svg"
+techStack: ["Python 3.11", "python-telegram-bot", "Claude CLI", "Pydantic", "Docker"]
+aiTools: ["Claude Code", "Claude Sonnet 4.6"]
+category: "AI Agent"
+featured: true
+status: "completed"
+githubUrl: "https://github.com/username/telegram-claude-agent"
+startDate: "2026-02"
+lastUpdated: "2026-02"
+---
+
+## 프로젝트 개요
+
+텔레그램 봇을 인터페이스로, **Claude CLI**를 두뇌로 삼아 로컬 Windows PC를 원격으로 조작하는 AI 에이전트입니다.
+집 밖에서 스마트폰으로 메시지를 보내면 PC에서 명령이 실행되고 결과가 돌아옵니다.
+
+**핵심 흐름**: Telegram 메시지 → python-telegram-bot → Claude CLI (stream-json) → 결과 반환
+
+## 주요 기능
+
+- **자연어 명령 실행**: "배치 앱 빌드해줘" → Gradle 빌드 실행 후 결과 요약
+- **파일 조작**: 파일 읽기/쓰기/수정을 자연어로 처리
+- **세션 유지**: `--resume` 플래그로 대화 컨텍스트 유지 (`/new`로 초기화)
+- **보안**: 허용된 Telegram User ID만 접근 가능, 위험 명령 차단
+- **감사 로그**: 모든 도구 호출을 `logs/audit.log`에 기록
+
+## 아키텍처
+
+```
+Telegram Bot (python-telegram-bot)
+    ↓
+Message Handler
+    ↓
+Auth Check (허용된 User ID?)
+    ↓
+Claude CLI subprocess
+  claude -p "{message}" --output-format stream-json
+    ↓
+Stream JSON 파싱 (tool_use, assistant, result 이벤트)
+    ↓
+Telegram 응답 전송
+```
+
+## 기술적 하이라이트
+
+### Claude CLI 스트리밍 연동
+
+```python
+async def run_agent(user_message: str, user_id: int) -> str:
+    cmd = [
+        "claude", "-p", user_message,
+        "--output-format", "stream-json",
+        "--model", "claude-sonnet-4-6",
+        "--allowedTools", "Bash,Read,Write,Edit,Glob,Grep",
+        "--append-system-prompt", SYSTEM_PROMPT,
+    ]
+
+    # 이전 세션 재개
+    if existing_session := store.get(user_id):
+        cmd.extend(["--resume", existing_session])
+
+    process = await asyncio.create_subprocess_exec(*cmd, stdout=PIPE, stderr=PIPE)
+    return await _process_stream(process)
+```
+
+### stream-json 이벤트 파싱
+
+Claude CLI의 `--output-format stream-json`은 다음 이벤트를 순서대로 발행합니다:
+
+| 이벤트 타입 | 설명 |
+|------------|------|
+| `system` | 세션 ID 포함, 대화 시작 |
+| `assistant` | Claude 텍스트 응답 |
+| `tool_use` | Bash/Read/Write 등 도구 호출 |
+| `tool_result` | 도구 실행 결과 |
+| `result` | 최종 응답, 세션 ID |
+
+### Jarvis 시스템 프롬프트
+
+에이전트는 **"Jarvis"** 페르소나로 동작합니다.
+- 항상 한국어로 응답
+- 말로만 하지 않고 반드시 도구를 사용
+- 위험 명령(`rm -rf /`, `shutdown` 등) 거부
+
+### 보안 레이어
+
+```python
+def is_authorized(user_id: int) -> bool:
+    allowed = get_settings().get_allowed_user_ids()
+    if not allowed:
+        return False  # 허용 목록이 비어있으면 전체 차단
+    return user_id in allowed
+```
+
+## 패키지 구조
+
+```
+src/
+├── agent/
+│   ├── claude_client.py   # Claude CLI 서브프로세스 실행 & 스트림 파싱
+│   └── system_prompt.py   # Jarvis 시스템 프롬프트
+├── bot/
+│   ├── handlers.py        # /start, /new, 메시지 핸들러
+│   └── formatters.py      # Telegram 메시지 포맷팅
+├── config/settings.py     # Pydantic Settings (환경변수)
+├── executor/              # 셸 실행 유틸리티
+├── security/
+│   ├── auth.py            # User ID 화이트리스트 인증
+│   └── audit.py           # 감사 로그
+└── session/store.py       # 세션 ID 영속 저장
+```
+
+## 배운 점
+
+- Claude CLI의 `stream-json` 포맷으로 도구 호출 과정을 실시간으로 추적할 수 있다
+- 세션 재개(`--resume`)로 대화 컨텍스트를 유지하면 훨씬 자연스러운 에이전트 경험을 제공한다
+- 개인 에이전트의 보안은 User ID 화이트리스트 + 위험 명령 차단이 핵심
+- 시스템 프롬프트로 에이전트의 페르소나와 동작 방식을 섬세하게 제어할 수 있다

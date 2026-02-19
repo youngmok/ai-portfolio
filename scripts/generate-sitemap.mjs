@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
-const BASE_URL = "https://username.github.io/ai-portfolio";
+const BASE_URL = "https://youngmok.github.io/ai-portfolio";
 const CONTENT_DIR = path.join(process.cwd(), "content");
 
 function getMdxSlugs(dir) {

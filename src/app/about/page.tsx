@@ -26,6 +26,7 @@ export default function AboutPage() {
         <div className="not-prose grid grid-cols-2 sm:grid-cols-3 gap-3 my-6">
           {[
             { category: "Backend", items: ["Java", "Spring Boot", "Spring Batch", "MyBatis"] },
+            { category: "AI Agent", items: ["Python 3.11", "Claude CLI", "Telegram Bot", "Pydantic"] },
             { category: "Frontend", items: ["Next.js", "TypeScript", "Tailwind CSS", "React"] },
             { category: "DevOps", items: ["Docker", "GitHub Actions", "PostgreSQL", "Gradle"] },
           ].map((group) => (
