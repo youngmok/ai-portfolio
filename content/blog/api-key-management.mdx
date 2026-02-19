@@ -1,0 +1,244 @@
+---
+title: "API 키 안전하게 관리하기 — .env부터 Jasypt 암호화까지"
+description: "두 프로젝트(Python Telegram 에이전트, Spring Batch)에서 API 키를 안전하게 다룬 방식을 비교하며 실전 패턴을 정리합니다."
+date: "2026-02-19"
+tags: ["Security", "API Key", "Pydantic", "Jasypt", "환경변수", "Python", "Spring Boot"]
+aiTools: ["Claude Code"]
+published: true
+relatedProject: "telegram-claude-agent"
+---
+
+## 왜 API 키 관리가 중요한가
+
+개발하다 보면 외부 서비스의 API 키를 코드 어딘가에 넣어야 하는 순간이 반드시 옵니다.
+Telegram Bot Token, OpenAI API Key, DB 비밀번호…
+
+이걸 잘못 다루면 GitHub에 올라간 토큰이 **몇 초 만에 스캔봇에 탐지**되어 악용됩니다.
+실제로 GitHub에는 실시간으로 커밋을 스캔해 토큰을 수집하는 봇이 동작합니다.
+
+이 글에서는 현재 운영 중인 두 프로젝트에서 API 키를 다루는 방식을 비교합니다.
+
+---
+
+## 프로젝트 1: Python — Pydantic Settings + .env
+
+**telegram-claude-agent**는 Python 기반으로, `pydantic-settings`를 사용합니다.
+
+### 구조
+
+```
+telegram-claude-agent/
+├── .env            ← 실제 키 (절대 커밋 금지)
+├── .env.example    ← 키 이름만 있는 템플릿 (커밋 OK)
+├── .gitignore      ← .env 등록 필수
+└── src/config/settings.py
+```
+
+### settings.py
+
+```python
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    telegram_bot_token: str          # 필수 — 없으면 앱 시작 실패
+    allowed_user_ids: str = ""       # 선택 — 기본값 있음
+    claude_model: str = "sonnet"
+    claude_timeout: int = 300
+
+    def get_allowed_user_ids(self) -> set[int]:
+        return {int(uid.strip()) for uid in self.allowed_user_ids.split(",") if uid.strip()}
+
+
+_settings: Settings | None = None
+
+def get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings
+```
+
+**Pydantic Settings의 장점:**
+- `.env` 파일과 **환경변수를 동시에 지원** — 로컬은 `.env`, 서버는 환경변수로 분리
+- 타입 검증 자동: `claude_timeout: int`에 문자열이 들어오면 즉시 에러
+- 필수 필드(`telegram_bot_token`)에 값이 없으면 앱 시작 시점에 바로 실패 → 런타임 오류 방지
+
+### .env vs .env.example
+
+```bash
+# .env (절대 커밋 금지, .gitignore에 등록)
+TELEGRAM_BOT_TOKEN=7812345678:AAHxxxxxxxxxxxxx
+ALLOWED_USER_IDS=123456789
+CLAUDE_MODEL=sonnet
+
+# .env.example (커밋 OK, 팀원/배포 가이드 역할)
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+ALLOWED_USER_IDS=123456789
+CLAUDE_MODEL=sonnet
+```
+
+`.env.example`은 **어떤 키가 필요한지 문서화**하는 역할입니다.
+신규 환경 세팅 시 `cp .env.example .env` 후 실제 값을 채우면 됩니다.
+
+### .gitignore 필수 등록
+
+```gitignore
+.env          # 실제 키 파일
+logs/         # 감사 로그 (user_id 등 개인정보 포함 가능)
+data/         # 세션 데이터
+```
+
+`.env`를 `.gitignore`에 추가하는 건 기본 중의 기본이지만,
+**이미 커밋된 상태에서 `.gitignore`에 추가해도 추적이 계속됩니다.**
+
+한 번이라도 커밋했다면:
+```bash
+git rm --cached .env
+git commit -m "remove .env from tracking"
+```
+
+---
+
+## 프로젝트 2: Spring Boot — Jasypt 암호화
+
+**batch-app**은 Java/Spring Boot 기반으로, **Jasypt**를 사용해 `application.yml` 안의 값을 직접 암호화합니다.
+
+### 암호화된 값 형식
+
+```yaml
+# application.yml
+spring:
+  datasource:
+    password: ENC(IV1lNUoSlytXlVb6pjvKCO1XMduF4q2WLH+wb8ZPw6kwz5odeWrPu0zbNCtZfs0Z)
+
+ai:
+  openai:
+    api-key: ENC(KqLwZ6sjqyiIlme/df2Fg6g6...)
+
+kakao:
+  oauth:
+    client-id: ENC(KdcDPlCSCXy7+KjoZXVC6p...)
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD:}
+```
+
+`ENC(...)` 안의 값은 암호화된 상태입니다.
+**복호화 키(`JASYPT_ENCRYPTOR_PASSWORD`)는 환경변수로만 주입** — 코드에 절대 작성 안 합니다.
+
+### 의존성 추가
+
+```gradle
+// build.gradle
+implementation 'com.github.ulisesbocchio:jasypt-spring-boot-starter:3.0.5'
+```
+
+### JasyptConfig 설정
+
+```java
+@Configuration
+public class JasyptConfig {
+
+    @Bean(name = "jasyptStringEncryptor")
+    public StringEncryptor stringEncryptor(
+            @Value("${jasypt.encryptor.password}") String password) {
+        PooledPBEStringEncryptor encryptor = new PooledPBEStringEncryptor();
+        SimpleStringPBEConfig config = new SimpleStringPBEConfig();
+        config.setPassword(password);
+        config.setAlgorithm("PBEWITHHMACSHA512ANDAES_256");
+        config.setPoolSize(1);
+        encryptor.setConfig(config);
+        return encryptor;
+    }
+}
+```
+
+### 값 암호화 방법
+
+```bash
+# Jasypt CLI로 암호화
+java -cp jasypt-1.9.3.jar \
+  org.jasypt.intf.cli.JasyptPBEStringEncryptionCLI \
+  input="my-secret-api-key" \
+  password="my-master-password" \
+  algorithm="PBEWITHHMACSHA512ANDAES_256"
+
+# 결과: ENC(KqLwZ6sjqyi...)
+```
+
+암호화된 값을 `application.yml`에 그대로 넣고 커밋합니다.
+복호화 키는 **배포 환경의 환경변수**로만 전달합니다.
+
+```bash
+# 실행 시
+export JASYPT_ENCRYPTOR_PASSWORD="my-master-password"
+./gradlew bootRun
+```
+
+### Python .env vs Jasypt 비교
+
+| 항목 | Python (.env) | Spring (Jasypt) |
+|------|--------------|-----------------|
+| 키 저장 위치 | `.env` (커밋 안 함) | `application.yml` (커밋 가능) |
+| 암호화 여부 | 없음 (평문, 파일 보호) | AES-256 암호화 |
+| 복호화 키 전달 | 파일 자체를 비공개 | 환경변수 (`JASYPT_ENCRYPTOR_PASSWORD`) |
+| 실수로 노출 시 | 파일 노출 = 키 노출 | 암호문 노출 = 복호화 키 없으면 안전 |
+| 적합한 상황 | 개인 프로젝트, 소규모 | 팀 협업, 설정 파일을 레포에서 관리할 때 |
+
+---
+
+## Docker 환경에서의 처리
+
+두 프로젝트 모두 Docker로 배포할 수 있습니다.
+컨테이너 환경에서는 `.env` 파일 대신 **환경변수 직접 주입**을 권장합니다.
+
+```bash
+# docker run 시 환경변수 주입
+docker run -d \
+  -e TELEGRAM_BOT_TOKEN="your-token" \
+  -e ALLOWED_USER_IDS="123456789" \
+  telegram-claude-agent
+
+# docker-compose.yml
+services:
+  app:
+    image: telegram-claude-agent
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ALLOWED_USER_IDS=${ALLOWED_USER_IDS}
+```
+
+`docker-compose.yml`의 `${TELEGRAM_BOT_TOKEN}`은 호스트의 환경변수 또는 `.env` 파일에서 읽힙니다.
+이 방식이면 `.env`는 서버에만 존재하고, 이미지나 컴포즈 파일에는 실제 값이 없습니다.
+
+---
+
+## 체크리스트: 지금 당장 확인할 것
+
+```bash
+# 1. .env가 .gitignore에 있는가?
+cat .gitignore | grep .env
+
+# 2. .env가 이미 git 추적 중인가?
+git ls-files | grep .env
+
+# 3. 과거 커밋에 키가 있는가?
+git log --all -p | grep -i "api[_-]key\|token\|password\|secret"
+```
+
+과거 커밋에 키가 노출됐다면:
+1. **즉시 키 무효화/재발급** (GitHub에서 이미 스캔됐다고 가정)
+2. `git filter-branch` 또는 `git-filter-repo`로 이력 삭제
+3. force push (`--force`)
+
+---
+
+## 배운 점
+
+- **`.env`는 커밋하는 게 아니라 배포하는 것**: 서버에 직접 올리거나, CI/CD 시크릿으로 주입
+- **Jasypt는 파일 내 암호화**: 설정 파일을 레포에서 관리해야 할 때 유용
+- **Pydantic Settings는 타입 안전**: 잘못된 값이 들어오면 앱 시작 시점에 바로 실패해서 오히려 안전
+- **복호화 키 하나를 잘 지키는 게 핵심**: 어떤 방식이든 마스터 키는 환경변수로만
