@@ -1,0 +1,107 @@
+---
+title: "개인 AI 어시스턴트 (Personal AI)"
+description: "Spring AI + pgvector 기반 RAG 시스템. PDF, 이미지, 블로그 등 다양한 소스에서 개인 지식을 수집하고, 텔레그램으로 자연어 질의응답을 제공하는 개인 AI 어시스턴트."
+thumbnail: "/images/personal-ai-thumb.svg"
+techStack: ["Spring Boot 4.0.1", "Spring AI 1.0.0", "pgvector", "OpenAI GPT-4o", "Telegram Bot", "Apache Tika", "Docker"]
+aiTools: ["Claude Code"]
+category: "AI Agent"
+featured: true
+status: "completed"
+githubUrl: "https://github.com/username/personal-ai"
+startDate: "2026-02"
+lastUpdated: "2026-02"
+---
+
+## 프로젝트 개요
+
+개인 데이터(이력서, 블로그, 문서, 이미지)를 벡터 임베딩으로 저장하고, 텔레그램에서 자연어로 질문하면 **나만의 데이터를 기반으로 답변**하는 RAG(Retrieval-Augmented Generation) 시스템입니다.
+
+**핵심 흐름**: 다중 소스 수집 → 청킹 → 벡터 임베딩(pgvector) → 유사도 검색 → GPT-4o 답변
+
+## 주요 기능
+
+- **다중 소스 수집**: 텍스트, PDF/Word/PPT, 이미지(Vision API), MDX 블로그, 이력서
+- **RAG 질의응답**: 벡터 유사도 검색 → 관련 문서 컨텍스트 → GPT-4o 답변
+- **폴백 전략**: 관련 문서 없으면 일반 LLM 모드로 자연스럽게 전환
+- **텔레그램 봇**: `/질문`, `/기억`, `/블로그`, `/검색` 명령 + 파일/사진 업로드
+- **중복 방지**: `ingest_history` 테이블로 같은 소스 재수집 방지
+
+## 아키텍처
+
+```
+텔레그램 / REST API
+    ↓
+Ingestor (Text, Document, Image, Blog)
+    ↓
+ChunkSplitter (500자, 50자 오버랩)
+    ↓
+OpenAI text-embedding-3-small (1536차원)
+    ↓
+pgvector (PostgreSQL 16 + IVFFLAT 인덱스)
+    ↓
+RagService.ask(question)
+    ↓
+벡터 유사도 검색 (top-5) → GPT-4o → 답변
+```
+
+## 기술적 하이라이트
+
+### Ingestor 패턴
+
+```java
+// 모든 Ingestor의 출력은 동일: Document[] + 메타데이터
+TextIngestor     → Document[]{sourceType=TEXT}
+DocumentIngestor → Document[]{sourceType=DOCUMENT}  // Tika
+ImageIngestor    → Document[]{sourceType=IMAGE}      // Vision API
+BlogIngestor     → Document[]{sourceType=BLOG}       // MDX 파싱
+```
+
+입력 형식은 다양하지만 출력은 통일하여, ChunkSplitter와 VectorStore가 입력 형식을 알 필요 없습니다.
+
+### pgvector로 벡터 검색
+
+```sql
+CREATE TABLE knowledge_base (
+    content     TEXT,
+    embedding   vector(1536),
+    source_type VARCHAR(20),
+    metadata    JSONB
+);
+-- IVFFLAT 인덱스: 코사인 유사도 기반 근사 최근접 이웃 검색
+CREATE INDEX ON knowledge_base
+    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
+별도 벡터 DB 없이 PostgreSQL 하나로 관계형 데이터와 벡터 검색을 모두 처리합니다.
+
+### RAG 폴백 전략
+
+```java
+if (!docs.isEmpty()) {
+    // RAG 모드: 개인 데이터 기반 답변
+    return chatClient.prompt()
+        .system(RAG_PROMPT).user(context + question).call().content();
+} else {
+    // 일반 모드: LLM 직접 답변
+    return chatClient.prompt()
+        .system(GENERAL_PROMPT).user(question).call().content();
+}
+```
+
+## 텔레그램 봇 명령
+
+| 명령 | 기능 |
+|------|------|
+| `/질문 [내용]` | RAG 기반 질의응답 |
+| `/기억 [텍스트]` | 텍스트를 지식 베이스에 저장 |
+| `/블로그 [경로/URL]` | MDX 파일 또는 웹 URL 수집 |
+| `/검색 [키워드]` | 벡터 검색 결과만 반환 |
+| 파일 전송 | PDF/Word/PPT 자동 수집 |
+| 사진 전송 | Vision API로 분석 후 저장 |
+
+## 배운 점
+
+- RAG는 파인튜닝보다 실용적 — 데이터 추가가 즉시 반영
+- pgvector면 충분 — 개인 규모에서 별도 벡터 DB는 과잉 설계
+- Ingestor 패턴 — 다양한 입력을 통일된 출력으로 변환하는 SRP 설계
+- 폴백 전략이 UX를 살린다 — "모르겠다" 대신 일반 답변 제공

@@ -1,0 +1,88 @@
+---
+title: "한국어 음성 인식 시스템 (Korean STT)"
+description: "faster-whisper 기반 한국어 음성 인식 시스템. 파일, 실시간 마이크, REST API, YouTube 4가지 모드를 지원하며 GPU 자동 감지와 VAD 무음 제거로 빠르고 정확한 인식을 제공."
+thumbnail: "/images/korean-stt-thumb.svg"
+techStack: ["Python", "faster-whisper", "CTranslate2", "PyAudio", "yt-dlp"]
+aiTools: ["Claude Code"]
+category: "AI/ML"
+featured: true
+status: "completed"
+githubUrl: "https://github.com/username/korean-stt"
+startDate: "2026-02"
+lastUpdated: "2026-02"
+---
+
+## 프로젝트 개요
+
+OpenAI Whisper large-v3 모델을 로컬에서 구동하여 한국어 음성을 텍스트로 변환하는 시스템입니다.
+클라우드 API 없이 로컬 GPU에서 10초 음성을 약 1초 만에 처리합니다.
+
+**핵심 흐름**: 음성 입력 → faster-whisper (GPU/CPU) → VAD 필터 → 타임스탬프 + 텍스트 출력
+
+## 주요 기능
+
+- **4가지 실행 모드**: 파일 변환, 실시간 마이크, REST API 서버, YouTube 영상
+- **GPU 자동 감지**: CUDA 사용 가능 시 float16, 불가 시 CPU int8 양자화로 폴백
+- **VAD(Voice Activity Detection)**: 무음 구간 자동 제거로 정확도 향상
+- **타임스탬프 출력**: 세그먼트별 시작/종료 시간 표시
+- **한국어 강제 지정**: `language="ko"`로 일본어 오인식 방지
+
+## 모듈 구성
+
+| 모듈 | 용도 | 실행 |
+|------|------|------|
+| `stt_file.py` | 오디오 파일 변환 | `python stt_file.py audio.mp3` |
+| `stt_realtime.py` | 실시간 마이크 | `python stt_realtime.py` |
+| `stt_server.py` | REST API (8090) | `POST /transcribe` |
+| `stt_youtube.py` | YouTube 영상 | `python stt_youtube.py <URL>` |
+
+## 기술적 하이라이트
+
+### GPU/CPU 자동 선택
+
+```python
+try:
+    model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+    # 실제 연산으로 GPU 동작 검증
+    test_features = np.zeros((80, 3000), dtype=np.float32)
+    model.model.encode(test_features)
+except Exception:
+    model = WhisperModel("large-v3", device="cpu", compute_type="int8")
+```
+
+CUDA 드라이버 존재 여부가 아닌 **실제 연산 성공 여부**로 GPU 사용을 결정합니다.
+
+### 실시간 인식 아키텍처
+
+```
+[녹음 스레드]              [인식 스레드]
+마이크 캡처 (16kHz)       5초 청크 추출
+    ↓                        ↓
+RMS 무음 감지             Whisper 인식
+    ↓                        ↓
+큐에 저장                 결과 출력
+```
+
+멀티스레딩으로 녹음과 인식을 병렬 처리하며, RMS 기반 무음 감지로 불필요한 인식을 줄입니다.
+
+### REST API 서버
+
+```bash
+curl -X POST -F "file=@audio.wav" http://localhost:8090/transcribe
+```
+
+Python 표준 라이브러리의 `http.server`만 사용하여 외부 의존성 없이 구현했습니다.
+JSON으로 세그먼트별 텍스트, 처리 시간, 배속 정보를 반환합니다.
+
+## 성능
+
+| 환경 | 10초 오디오 | 배속 |
+|------|------------|------|
+| CUDA GPU (float16) | ~1.2초 | 9x |
+| CPU (int8) | ~8초 | 1.3x |
+
+## 배운 점
+
+- faster-whisper는 원본 Whisper보다 4배 빠르다 (CTranslate2 최적화)
+- VAD가 정확도의 핵심 — 무음 제거만으로 오인식이 크게 줄어든다
+- 한국어 강제 지정(`language="ko"`)이 중요 — 없으면 일본어로 인식되는 경우가 잦다

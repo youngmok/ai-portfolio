@@ -1,0 +1,143 @@
+---
+title: "Whisper로 한국어 음성 인식 시스템 만들기 — 파일, 실시간, API, YouTube까지"
+description: "faster-whisper 기반의 한국어 STT 시스템 구축기. GPU 자동 감지, VAD 무음 제거, 4가지 실행 모드를 구현한 과정을 정리합니다."
+date: "2026-02-20"
+tags: ["Python", "Whisper", "STT", "음성인식", "faster-whisper", "Claude Code"]
+aiTools: ["Claude Code"]
+published: true
+relatedProject: "korean-stt"
+---
+
+## 만든 이유
+
+한국어 음성을 텍스트로 변환하는 도구가 필요했습니다.
+클라우드 API는 비용이 들고, 로컬에서 돌리면 데이터 유출 걱정도 없습니다.
+OpenAI의 **Whisper large-v3** 모델을 로컬 GPU에서 구동하면 10초 음성을 1초 만에 처리할 수 있습니다.
+
+## 4가지 실행 모드
+
+하나의 프로젝트에서 용도별로 4가지 모드를 만들었습니다.
+
+| 모듈 | 용도 | 실행 |
+|------|------|------|
+| `stt_file.py` | 오디오 파일 변환 | `python stt_file.py recording.mp3` |
+| `stt_realtime.py` | 실시간 마이크 입력 | `python stt_realtime.py` |
+| `stt_server.py` | REST API 서버 | `POST /transcribe` |
+| `stt_youtube.py` | YouTube 영상 변환 | `python stt_youtube.py <URL>` |
+
+## GPU/CPU 자동 선택 패턴
+
+모든 모듈에서 공통으로 사용하는 패턴입니다.
+
+```python
+model = None
+try:
+    import ctranslate2
+    if ctranslate2.get_cuda_device_count() > 0:
+        model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+        # 실제 연산으로 GPU 동작 검증
+        test_features = np.zeros((80, 3000), dtype=np.float32)
+        model.model.encode(test_features)
+except Exception:
+    pass
+
+if model is None:
+    model = WhisperModel("large-v3", device="cpu", compute_type="int8")
+```
+
+핵심은 **GPU 가용성을 단순히 확인하는 게 아니라 실제 연산으로 검증**하는 것입니다.
+CUDA 드라이버가 설치되어 있어도 메모리 부족 등으로 실패할 수 있기 때문입니다.
+
+- GPU: `float16` (반정밀도) — 속도 최적화
+- CPU: `int8` (정수 양자화) — 메모리 절감
+
+## VAD로 무음 구간 제거
+
+음성 인식 정확도를 높이는 핵심은 **Voice Activity Detection**입니다.
+
+```python
+segments, info = model.transcribe(
+    audio_input,
+    language="ko",
+    beam_size=5,
+    vad_filter=True,
+    vad_parameters=dict(min_silence_duration_ms=500),
+)
+```
+
+`vad_filter=True`로 0.5초 이상 무음 구간을 자동 제거하면:
+- 배경 소음으로 인한 오인식 감소
+- 처리 시간 단축 (무음 구간 스킵)
+- 타임스탬프 정확도 향상
+
+## 실시간 인식: 멀티스레딩 아키텍처
+
+`stt_realtime.py`는 두 개의 스레드로 동작합니다.
+
+```
+[녹음 스레드]                    [인식 스레드]
+마이크 캡처 (16kHz, 모노)       큐에서 5초 청크 추출
+    ↓                              ↓
+RMS 기반 무음 감지              faster-whisper 인식
+    ↓                              ↓
+큐에 오디오 데이터 저장          결과 실시간 출력
+```
+
+RMS(Root Mean Square)로 무음을 판정하여 불필요한 인식 호출을 줄입니다.
+
+```python
+rms = np.sqrt(np.mean(audio_data ** 2))
+if rms < 0.01:  # 무음 판정
+    continue
+```
+
+## REST API 서버
+
+다른 서비스에서 호출할 수 있도록 HTTP 서버도 구현했습니다.
+
+```bash
+curl -X POST -F "file=@audio.wav" http://localhost:8090/transcribe
+```
+
+```json
+{
+  "success": true,
+  "language": "ko",
+  "duration": 10.9,
+  "processing_time": 1.2,
+  "speed_ratio": 9.1,
+  "text": "안녕하세요. 오늘 주요 금융시장 동향을 알려드리겠습니다.",
+  "segments": [
+    {"start": 0.0, "end": 4.8, "text": "안녕하세요..."}
+  ]
+}
+```
+
+Python 표준 라이브러리의 `http.server`만 사용하여 외부 의존성 없이 구현했습니다.
+
+## YouTube 영상 변환
+
+yt-dlp로 오디오를 다운로드하고 바로 인식합니다.
+
+```bash
+python stt_youtube.py "https://youtu.be/xxxxx"
+```
+
+FFmpeg가 있으면 mp3로 변환, 없으면 원본 webm을 직접 처리합니다.
+결과는 `youtube_transcript.txt`에 타임스탬프와 함께 저장됩니다.
+
+## 성능
+
+| 환경 | 10초 오디오 | 배속 |
+|------|------------|------|
+| CUDA GPU (float16) | ~1.2초 | 9x |
+| CPU (int8) | ~8초 | 1.3x |
+
+GPU가 있으면 실시간보다 9배 빠르게 처리됩니다.
+
+## 배운 점
+
+- **faster-whisper는 원본 Whisper보다 4배 빠르다** — CTranslate2 최적화 덕분
+- **GPU 검증은 실제 연산으로** — `get_cuda_device_count()`만으론 불충분
+- **VAD가 정확도의 핵심** — 무음 제거만으로 오인식이 크게 줄어든다
+- **한국어 강제 지정이 중요** — `language="ko"` 없이는 일본어로 인식되는 경우가 잦다

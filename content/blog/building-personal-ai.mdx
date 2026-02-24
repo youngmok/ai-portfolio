@@ -1,0 +1,140 @@
+---
+title: "개인 AI 어시스턴트 구축기 — RAG, pgvector, 텔레그램 연동까지"
+description: "Spring AI + pgvector로 개인 지식 베이스를 구축하고, 텔레그램으로 질문하면 나만의 데이터를 기반으로 답변하는 RAG 시스템을 만든 과정."
+date: "2026-02-23"
+tags: ["Spring Boot", "Spring AI", "RAG", "pgvector", "Telegram", "OpenAI", "Claude Code"]
+aiTools: ["Claude Code"]
+published: true
+relatedProject: "personal-ai"
+---
+
+## 만든 이유
+
+일반 ChatGPT는 내 이력서, 블로그 글, 프로젝트 정보를 모릅니다.
+"내 기술 스택이 뭐야?"라고 물으면 답할 수 없습니다.
+**개인 데이터를 학습시킨 나만의 AI 어시스턴트**가 필요했습니다.
+
+## 핵심 아이디어: RAG
+
+**Retrieval-Augmented Generation**의 핵심은 간단합니다.
+
+```
+질문 → 벡터 검색으로 관련 문서 찾기 → 문서를 컨텍스트로 LLM에 전달 → 답변
+```
+
+모델을 파인튜닝하는 것보다 비용이 적고, 데이터를 추가할 때 재학습이 필요 없습니다.
+
+## 다중 소스 Ingestor 설계
+
+5가지 형식의 데이터를 받아들입니다.
+
+| Ingestor | 입력 | 처리 방식 |
+|----------|------|----------|
+| `TextIngestor` | 텍스트 메모 | 직접 청킹 |
+| `DocumentIngestor` | PDF, Word, PPT | Apache Tika로 텍스트 추출 |
+| `ImageIngestor` | 이미지 | GPT-4o Vision으로 설명 생성 |
+| `BlogIngestor` | MDX 파일, URL | 프론트매터 파싱 + 마크다운 정제 |
+| Resume | 이력서 텍스트 | RESUME 타입으로 저장 |
+
+모든 Ingestor의 출력은 동일합니다: `Document[]` + 메타데이터.
+이 일관성 덕분에 ChunkSplitter와 VectorStore가 입력 형식을 알 필요가 없습니다.
+
+## 텍스트 청킹 전략
+
+```java
+// ChunkSplitter: 500자 단위, 50자 오버랩
+public List<Document> split(String text, Map<String, Object> metadata) {
+    // 단어 경계에서 분할 (단어 중간에서 자르지 않음)
+    // 50자 오버랩으로 문맥 유지
+}
+```
+
+- **500자**: 임베딩 모델의 효율적인 입력 크기
+- **50자 오버랩**: 청크 경계에서 문맥이 끊기는 것을 방지
+- **단어 경계 분할**: 한국어 단어 중간에서 잘리지 않도록
+
+## pgvector: PostgreSQL에서 벡터 검색
+
+별도의 벡터 DB(Pinecone, Weaviate) 대신 **pgvector 확장**을 사용했습니다.
+
+```sql
+CREATE TABLE knowledge_base (
+    id          BIGSERIAL PRIMARY KEY,
+    content     TEXT,
+    embedding   vector(1536),        -- OpenAI text-embedding-3-small
+    source_type VARCHAR(20) NOT NULL,
+    source_name TEXT,
+    metadata    JSONB,
+    created_at  TIMESTAMPTZ
+);
+
+CREATE INDEX ON knowledge_base
+    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
+장점:
+- **인프라 단순화** — PostgreSQL 하나로 관계형 데이터와 벡터 검색 모두 처리
+- **JSONB 메타데이터** — 소스 타입, 태그, 작성일 등을 유연하게 저장
+- **IVFFLAT 인덱스** — 근사 최근접 이웃 검색으로 빠른 쿼리
+
+## RAG 파이프라인
+
+```java
+public String ask(String question) {
+    // 1. 벡터 유사도 검색 (top-5)
+    List<Document> docs = vectorStore.similaritySearch(question, 5);
+
+    if (!docs.isEmpty()) {
+        // 2. 문서 컨텍스트 + 질문으로 GPT-4o 호출
+        String context = formatDocuments(docs);
+        return chatClient.prompt()
+            .system(RAG_SYSTEM_PROMPT)
+            .user(context + "\n\n질문: " + question)
+            .call().content();
+    } else {
+        // 3. 관련 문서 없으면 일반 LLM으로 폴백
+        return chatClient.prompt()
+            .system(GENERAL_SYSTEM_PROMPT)
+            .user(question)
+            .call().content();
+    }
+}
+```
+
+관련 문서가 있으면 RAG 모드, 없으면 일반 대화 모드로 자연스럽게 전환됩니다.
+
+## 텔레그램 봇 인터페이스
+
+스마트폰에서 편하게 사용할 수 있도록 텔레그램 봇을 연동했습니다.
+
+```
+/질문 내 기술 스택이 뭐야?     → RAG 검색 + 답변
+/기억 오늘 Docker 공부했음     → 텍스트로 저장
+/블로그 /path/to/blog          → MDX 파일 일괄 수집
+/검색 Spring Boot              → 벡터 검색 결과만 반환
+사진 전송                       → Vision API로 분석 후 저장
+파일 전송 (PDF)                 → Tika로 추출 후 저장
+```
+
+`allowed-user-id`로 나만 접근할 수 있도록 제한합니다.
+
+## 중복 수집 방지
+
+```sql
+CREATE TABLE ingest_history (
+    source_ref  TEXT NOT NULL UNIQUE,  -- 파일 경로 또는 URL
+    chunk_count INT,
+    ingested_at TIMESTAMPTZ
+);
+```
+
+같은 파일을 다시 수집하면 `source_ref` 유니크 제약으로 건너뜁니다.
+블로그 글이 업데이트되면 기존 청크를 삭제하고 다시 수집합니다.
+
+## 배운 점
+
+- **RAG는 파인튜닝보다 실용적** — 데이터 추가가 즉시 반영, 비용도 저렴
+- **pgvector면 충분하다** — 개인 규모에서 별도 벡터 DB는 과잉 설계
+- **Ingestor 패턴** — 입력 형식은 다양해도 출력은 `Document[]`로 통일
+- **폴백 전략이 UX를 살린다** — 관련 문서가 없을 때 "모르겠다" 대신 일반 답변 제공
+- **텔레그램이 최고의 인터페이스** — 별도 앱 없이 스마트폰에서 바로 사용

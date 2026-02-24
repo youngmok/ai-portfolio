@@ -1,0 +1,85 @@
+<svg width="1200" height="675" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e1b3a"/>
+      <stop offset="100%" style="stop-color:#0f0a24"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <!-- Grid pattern -->
+  <g opacity="0.06">
+    <line x1="100" y1="0" x2="100" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="200" y1="0" x2="200" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="300" y1="0" x2="300" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="400" y1="0" x2="400" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="500" y1="0" x2="500" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="600" y1="0" x2="600" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="700" y1="0" x2="700" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="800" y1="0" x2="800" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="900" y1="0" x2="900" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="1000" y1="0" x2="1000" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="1100" y1="0" x2="1100" y2="675" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="100" x2="1200" y2="100" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="200" x2="1200" y2="200" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="300" x2="1200" y2="300" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="400" x2="1200" y2="400" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="500" x2="1200" y2="500" stroke="#fff" stroke-width="1"/>
+    <line x1="0" y1="600" x2="1200" y2="600" stroke="#fff" stroke-width="1"/>
+  </g>
+  <!-- Knowledge graph nodes -->
+  <g opacity="0.18">
+    <!-- Central brain/AI node -->
+    <circle cx="600" cy="270" r="50" fill="#8b5cf6"/>
+    <!-- Surrounding data source nodes -->
+    <circle cx="420" cy="190" r="28" fill="#ec4899"/>
+    <circle cx="780" cy="190" r="28" fill="#06b6d4"/>
+    <circle cx="380" cy="310" r="28" fill="#f59e0b"/>
+    <circle cx="820" cy="310" r="28" fill="#22c55e"/>
+    <circle cx="500" cy="160" r="22" fill="#f472b6"/>
+    <circle cx="700" cy="160" r="22" fill="#2dd4bf"/>
+    <!-- Connection lines -->
+    <line x1="445" y1="205" x2="555" y2="255" stroke="#c084fc" stroke-width="2"/>
+    <line x1="760" y1="205" x2="645" y2="255" stroke="#c084fc" stroke-width="2"/>
+    <line x1="405" y1="305" x2="555" y2="280" stroke="#c084fc" stroke-width="2"/>
+    <line x1="795" y1="305" x2="645" y2="280" stroke="#c084fc" stroke-width="2"/>
+    <line x1="518" y1="172" x2="565" y2="235" stroke="#c084fc" stroke-width="1.5"/>
+    <line x1="682" y1="172" x2="635" y2="235" stroke="#c084fc" stroke-width="1.5"/>
+    <!-- Labels on nodes -->
+    <text x="420" y="195" font-family="system-ui, sans-serif" font-size="12" fill="#fce7f3" text-anchor="middle">PDF</text>
+    <text x="780" y="195" font-family="system-ui, sans-serif" font-size="12" fill="#cffafe" text-anchor="middle">Blog</text>
+    <text x="380" y="315" font-family="system-ui, sans-serif" font-size="12" fill="#fef3c7" text-anchor="middle">Text</text>
+    <text x="820" y="315" font-family="system-ui, sans-serif" font-size="12" fill="#d1fae5" text-anchor="middle">Image</text>
+    <text x="600" y="276" font-family="system-ui, sans-serif" font-size="16" fill="#ede9fe" text-anchor="middle">RAG</text>
+  </g>
+  <!-- Vector embedding dots -->
+  <g opacity="0.08">
+    <circle cx="150" cy="480" r="3" fill="#c084fc"/>
+    <circle cx="175" cy="500" r="3" fill="#c084fc"/>
+    <circle cx="160" cy="520" r="3" fill="#c084fc"/>
+    <circle cx="190" cy="490" r="3" fill="#c084fc"/>
+    <circle cx="200" cy="515" r="3" fill="#c084fc"/>
+    <circle cx="220" cy="475" r="3" fill="#c084fc"/>
+    <circle cx="140" cy="505" r="3" fill="#c084fc"/>
+    <circle cx="1000" cy="480" r="3" fill="#c084fc"/>
+    <circle cx="1025" cy="500" r="3" fill="#c084fc"/>
+    <circle cx="1010" cy="520" r="3" fill="#c084fc"/>
+    <circle cx="1040" cy="490" r="3" fill="#c084fc"/>
+    <circle cx="1050" cy="515" r="3" fill="#c084fc"/>
+    <circle cx="1070" cy="475" r="3" fill="#c084fc"/>
+    <circle cx="990" cy="505" r="3" fill="#c084fc"/>
+  </g>
+  <!-- Title -->
+  <text x="600" y="390" font-family="system-ui, sans-serif" font-size="46" font-weight="bold" fill="#f1f5f9" text-anchor="middle">Personal AI</text>
+  <text x="600" y="440" font-family="system-ui, sans-serif" font-size="26" fill="#94a3b8" text-anchor="middle">RAG 기반 개인 AI 어시스턴트</text>
+  <!-- Tech badges -->
+  <rect x="215" y="475" width="130" height="32" rx="16" fill="#2e1065" opacity="0.7"/>
+  <text x="280" y="496" font-family="system-ui, sans-serif" font-size="14" fill="#c4b5fd" text-anchor="middle">Spring AI</text>
+  <rect x="363" y="475" width="100" height="32" rx="16" fill="#2e1065" opacity="0.7"/>
+  <text x="413" y="496" font-family="system-ui, sans-serif" font-size="14" fill="#c4b5fd" text-anchor="middle">pgvector</text>
+  <rect x="481" y="475" width="110" height="32" rx="16" fill="#2e1065" opacity="0.7"/>
+  <text x="536" y="496" font-family="system-ui, sans-serif" font-size="14" fill="#c4b5fd" text-anchor="middle">GPT-4o</text>
+  <rect x="609" y="475" width="110" height="32" rx="16" fill="#2e1065" opacity="0.7"/>
+  <text x="664" y="496" font-family="system-ui, sans-serif" font-size="14" fill="#c4b5fd" text-anchor="middle">Telegram</text>
+  <rect x="737" y="475" width="130" height="32" rx="16" fill="#2e1065" opacity="0.7"/>
+  <text x="802" y="496" font-family="system-ui, sans-serif" font-size="14" fill="#c4b5fd" text-anchor="middle">Apache Tika</text>
+</svg>
