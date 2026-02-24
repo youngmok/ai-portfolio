@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -23,13 +25,30 @@
   --tw-prose-pre-bg: theme(--color-gray-900);
 }
 
-/* rehype-pretty-code */
-[data-rehype-pretty-code-figure] pre {
-  @apply rounded-lg border border-gray-200 dark:border-gray-800;
+/* 모든 prose 코드 블록 공통 스타일 */
+.prose pre {
+  @apply rounded-lg border border-gray-200 text-sm;
+  background-color: #f6f8fa !important;
+  color: #24292e;
 }
 
-[data-rehype-pretty-code-figure] code {
-  @apply text-sm;
+.dark .prose pre {
+  @apply border-gray-800;
+  background-color: #24292e !important;
+  color: #e1e4e8;
+}
+
+.prose pre code {
+  @apply px-4;
+}
+
+/* rehype-pretty-code 구문 하이라이팅 */
+[data-rehype-pretty-code-figure] code span {
+  color: var(--shiki-light);
+}
+
+.dark [data-rehype-pretty-code-figure] code span {
+  color: var(--shiki-dark);
 }
 
 [data-rehype-pretty-code-figure] code [data-line] {

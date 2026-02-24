@@ -12,6 +12,7 @@ export const SITE_CONFIG = {
     { label: "홈", href: "/" },
     { label: "프로젝트", href: "/projects" },
     { label: "블로그", href: "/blog" },
+    { label: "경력", href: "/career" },
     { label: "소개", href: "/about" },
   ],
 } as const;
