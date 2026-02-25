@@ -1,0 +1,188 @@
+---
+title: "OpenAI gpt-4o-transcribe 추가 — 4개 STT 모델 한국어 정확도 비교"
+description: "OpenAI의 최신 STT 모델 gpt-4o-transcribe를 포함한 4개 모델의 한국어 음성 인식 정확도를 동일 영상으로 비교합니다. 고유명사, 숫자, 처리 비용까지 실측 데이터로 정리합니다."
+date: "2026-02-25"
+tags: ["Python", "OpenAI", "Whisper", "Gemini", "STT", "음성인식", "gpt-4o-transcribe", "벤치마크"]
+aiTools: ["Claude Code"]
+published: true
+relatedProject: "korean-stt"
+---
+
+## 배경
+
+[이전 글](/ai-portfolio/blog/whisper-vs-gemini-stt/)에서 Faster-Whisper(GPU)와 Google Gemini의 한국어 STT를 비교했습니다.
+이번에는 OpenAI의 **최신 음성 인식 모델 gpt-4o-transcribe**(2025년 3월 출시)를 추가하여, 총 **4개 모델**로 동일한 22.7분 한국어 영상을 인식한 결과를 비교합니다.
+
+### 테스트 대상 모델
+
+| 모델 | 유형 | 기반 |
+|------|------|------|
+| **OpenAI gpt-4o-transcribe** | 클라우드 API | GPT-4o 기반 (최신) |
+| **Faster-Whisper large-v3** | 로컬 GPU | Whisper large-v3 + CTranslate2 |
+| **Faster-Whisper medium** | 로컬 CPU | Whisper medium + int8 양자화 |
+| **Google Gemini** | 클라우드 API | Gemini Pro |
+
+## OpenAI STT 모듈 구현
+
+OpenAI Audio API를 사용하는 모듈 3개를 만들었습니다.
+
+| 모듈 | 용도 | 기본 모델 |
+|------|------|-----------|
+| `openai_stt.py` | 오디오 파일 변환 | gpt-4o-transcribe |
+| `openai_tts.py` | 텍스트 → 음성 | gpt-4o-mini-tts |
+| `openai_stt_youtube.py` | YouTube 영상 변환 | gpt-4o-transcribe |
+
+### gpt-4o-transcribe의 출력 토큰 제한 문제
+
+첫 테스트에서 22.7분 영상의 약 **28%만 텍스트화**되는 문제가 발생했습니다. gpt-4o-transcribe에는 출력 토큰 제한이 있어, 긴 오디오를 한 번에 처리하면 텍스트가 중간에 잘립니다.
+
+또한 `verbose_json` 응답 포맷을 지원하지 않아, `text` 또는 `json` 포맷만 사용 가능합니다.
+
+해결 방법: **5분 단위 청크 분할 처리**
+
+```python
+# gpt-4o-transcribe 계열은 출력 토큰 제한 → 5분 단위 분할 필수
+is_gpt4o = model.startswith("gpt-4o")
+if is_gpt4o or file_size_mb > 25:
+    chunk_min = 5 if is_gpt4o else 10
+    return transcribe_chunks(client, file_path, output_path, model, chunk_min=chunk_min)
+```
+
+ffmpeg로 5분 단위 mp3 청크를 생성하고, 각 청크를 별도 API로 호출한 뒤 결과를 합칩니다.
+시스템에 ffmpeg가 없는 경우 `imageio-ffmpeg` 패키지의 번들 바이너리를 자동 사용합니다.
+
+```python
+def _find_ffmpeg():
+    path = shutil.which("ffmpeg")
+    if path:
+        return path
+    import imageio_ffmpeg
+    return imageio_ffmpeg.get_ffmpeg_exe()
+```
+
+5분 × 5청크로 분할한 결과, **11,620자 전체 텍스트**를 정상적으로 인식했습니다.
+
+## 처리 성능 비교
+
+| 항목 | gpt-4o-transcribe | FW large-v3 (GPU) | FW medium (CPU) | Gemini |
+|------|:-:|:-:|:-:|:-:|
+| **처리 시간** | ~47초 × 5청크 | 261.5초 (4.4분) | 5401.4초 (90분) | 클라우드 |
+| **배속** | ~29x (API) | **5.2x** | 0.3x | - |
+| **출력 텍스트** | 11,620자 | 11,643자 | 11,694자 | 13,512자 |
+| **타임스탬프** | 없음 (청크 단위) | 세그먼트별 564개 | 세그먼트별 570개 | 구간별 122개 |
+
+gpt-4o-transcribe는 API 호출이므로 **처리 속도가 가장 빠릅니다** (약 47초/청크). 로컬 GPU 대비 약 5.6배 빠릅니다.
+
+## 구간별 정확도 비교
+
+### 첫 2분 (0:00~2:00)
+
+| 비교 항목 | gpt-4o-transcribe | FW large-v3 | FW medium | Gemini |
+|-----------|:-:|:-:|:-:|:-:|
+| "이영돈 PD" | **이용돈** | 이영돈 | 이영돈 | 이영돈 |
+| "민경욱 전 의원" | **민경호** | 민경욱 | 민경욱 | **민경국** |
+| "10표, 15표" | 10표, 15표 | 10표, 15표 | 10표, 15표 | **열표** |
+| 문장 흐름 | 매끄러움 | 양호 | 양호 | 불안정 |
+
+### 중간 구간 (~10분 지점)
+
+| 비교 항목 | gpt-4o-transcribe | FW large-v3 | FW medium | Gemini |
+|-----------|:-:|:-:|:-:|:-:|
+| "독려" | 독려 | 독려 | 독려 | **동료** |
+| "무작위성" | 무작위 | 무작위 | 무작위 | **무작기** |
+| "1초분의 1" (확률) | 1초분의 1 | 1초분의 1 | 1초분의 1 | **1분** (탈락) |
+
+### 마지막 2분 (20:30~22:41)
+
+| 비교 항목 | gpt-4o-transcribe | FW large-v3 | FW medium | Gemini |
+|-----------|:-:|:-:|:-:|:-:|
+| "이낙연 59%" | **59%** | **99%** (치명적 오류) | **99%** (치명적 오류) | **90 59%** |
+| "토익 봤잖아요" | **토익** | 토이팟 | 토이팟 | 토입 |
+| "윤석열 대통령" | 윤석열 | 윤석열 | 윤석열 | **윤성열** |
+| "이공계" | 이공계 | 이공계 | 이공계 | **이공기** |
+
+gpt-4o-transcribe는 마지막 구간에서 **숫자와 영어 외래어** 인식이 특히 정확했습니다.
+
+## 오류 유형 분석
+
+### 고유명사 (인명)
+
+| 원래 발화 | gpt-4o-transcribe | FW large-v3 | Gemini |
+|-----------|:-:|:-:|:-:|
+| 이영돈 PD | **이용돈** | 이영돈 | 이영돈 |
+| 민경욱 | **민경호** | 민경욱 | **민경국** |
+| 윤석열 | 윤석열 | 윤석열 | **윤성열** |
+| 한동훈 | 한동훈 | 한동훈 | **한동은** |
+
+gpt-4o-transcribe는 인명 2건 오류, FW large-v3는 0건, Gemini는 3건 이상입니다.
+흥미로운 점은 **gpt-4o-transcribe가 틀리는 인명을 FW large-v3는 정확히 맞추고, 그 반대도 성립**한다는 것입니다.
+
+### 문맥 이해와 문장 매끄러움
+
+gpt-4o-transcribe가 가장 두드러지는 강점은 **문맥 이해력**입니다.
+
+```
+gpt-4o-transcribe:
+"통계학적인 거로 이게 말이 안 된다라는 걸 설명을 해주고 있어요, 이 영상에서는."
+
+FW large-v3:
+"통계학적인 거로 이게 말이 안 된다라는 걸 설명을 해주고 있어요 이 이 영상에서는"
+
+Gemini:
+"통계학적인 이게 말이 안 된다라는 걸 설명을 해 주고 있어요.이 이 영상에서는"
+```
+
+GPT-4o 기반이라 자연어 처리 능력이 반영되어, 구두점 배치와 문장 연결이 가장 자연스럽습니다.
+
+### 숫자/퍼센트
+
+| 항목 | gpt-4o-transcribe | FW large-v3 | Gemini |
+|------|:-:|:-:|:-:|
+| 33,933표 | 33,933표 | 33,933표 | 33,933표 |
+| 59% | **59%** | **99%** (치명적) | **90 59%** |
+| 1초분의 1 | 1초분의 1 | 1초분의 1 | **1분** (탈락) |
+
+FW large-v3의 "59% → 99%" 오류는 단일 오류지만 **결과 신뢰도에 치명적**입니다. gpt-4o-transcribe는 숫자 인식에서 가장 안정적이었습니다.
+
+## 종합 등급
+
+| 모델 | 등급 | 핵심 강점 | 핵심 약점 |
+|------|:----:|----------|----------|
+| **gpt-4o-transcribe** | **A** | 문맥 이해 최상, 숫자 정확, 문장 매끄러움 | 인명 2건 오류 (이용돈, 민경호) |
+| **FW large-v3 (GPU)** | **A-** | 고유명사 정확, 타임스탬프 정밀 | 숫자 오류 1건 (59%→99%), 간헐적 환각 |
+| **FW medium (CPU)** | **B+** | GPU 없이 사용 가능, 저비용 | 처리 속도 극히 느림 (90분) |
+| **Gemini** | **B-** | 문단 단위 가독성 | 인명/전문용어 반복 오류, 비용 대비 부실 |
+
+## 비용 분석
+
+| 항목 | gpt-4o-transcribe | FW large-v3 (GPU) | FW medium (CPU) | Gemini |
+|------|:-:|:-:|:-:|:-:|
+| **단가** | $0.006/분 | 전기 ~$0.005 | 전기 ~$0.003 | ~$0.014 |
+| **22.7분 비용** | **$0.136** | **~$0.005** | **~$0.003** | **~$0.014** |
+| **100시간 비용** | $36.00 | ~$1.32 | ~$0.79 | ~$84.00 |
+| **비용 대비 성능** | 고품질/고비용 | **최고 가성비** | 저비용/저속도 | 고비용/저품질 |
+
+FW large-v3 GPU는 gpt-4o-transcribe 대비 **27배 저렴**하면서 거의 동등한 품질을 제공합니다.
+
+## 시나리오별 추천
+
+| 시나리오 | 추천 모델 | 이유 |
+|----------|----------|------|
+| **GPU 보유 + 대량 처리** | FW large-v3 | 최고 가성비 ($0.005/22분) |
+| **GPU 없음 + 최고 품질** | gpt-4o-transcribe | 문맥 이해력과 숫자 정확도 최상 |
+| **자막 생성** | FW large-v3 | 564개 세그먼트, 2~5초 단위 타임스탬프 |
+| **빠른 처리 필요** | gpt-4o-transcribe | API 호출로 ~47초/5분 청크 |
+| **비용 극한 절감** | FW medium (CPU) | $0.003, 속도 포기 필요 |
+| **한국어 STT** | Gemini 제외 | 인명/전문용어 오류 심각 |
+
+## 정리
+
+3개의 블로그 글에 걸쳐 한국어 STT 시스템을 발전시켜 왔습니다.
+
+| 단계 | 내용 | 주요 성과 |
+|------|------|----------|
+| [1편](/ai-portfolio/blog/building-korean-stt/) | 로컬 STT 시스템 구축 | 4가지 모드 (파일/실시간/API/YouTube) |
+| [2편](/ai-portfolio/blog/whisper-vs-gemini-stt/) | GPU 전환 + Gemini 비교 | 43배 속도 향상, Whisper > Gemini 확인 |
+| **3편 (이 글)** | OpenAI 최신 모델 추가 | 4개 모델 종합 벤치마크 |
+
+**핵심 결론**: gpt-4o-transcribe는 **문맥 이해와 문장 매끄러움**에서 최상위를 보였고, FW large-v3는 **고유명사 정확도와 가성비**에서 최고였습니다. 두 모델은 서로 다른 강점을 가지므로, 용도에 따라 선택하는 것이 최선입니다. Gemini는 한국어 STT에 여전히 부적합합니다.
