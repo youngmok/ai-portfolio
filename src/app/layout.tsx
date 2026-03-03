@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import AnalyticsProvider from "@/components/analytics/AnalyticsProvider";
 import { SITE_CONFIG } from "@/lib/constants";
 import "./globals.css";
 
@@ -36,11 +37,13 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100`}
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <div className="flex min-h-screen flex-col">
-            <Header />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
+          <AnalyticsProvider>
+            <div className="flex min-h-screen flex-col">
+              <Header />
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </div>
+          </AnalyticsProvider>
         </ThemeProvider>
       </body>
     </html>
