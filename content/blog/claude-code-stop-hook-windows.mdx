@@ -1,0 +1,251 @@
+---
+title: "Claude Code Stop Hook — Windows 알림 삽질기"
+description: "Claude Code 작업 완료 시 Windows 알림을 띄우기까지의 여정. PowerShell WinRT 버그, DETACHED_PROCESS 함정, base64 이스케이프까지."
+date: "2026-03-05"
+tags: ["Claude Code", "Windows", "Python", "Hooks", "DevEx"]
+aiTools: ["Claude Code"]
+published: true
+---
+
+## 목표
+
+Claude Code에서 작업이 끝나면 Windows 알림을 띄워서,
+다른 작업을 하다가도 **"Claude가 끝났구나"**를 바로 알 수 있도록 하고 싶었습니다.
+
+Claude Code는 `Stop` hook을 제공합니다.
+응답이 완료될 때마다 지정한 스크립트를 실행하고, stdin으로 마지막 응답 내용을 JSON으로 전달합니다.
+
+```json
+// settings.json
+{
+  "hooks": {
+    "Stop": [{
+      "hooks": [{
+        "type": "command",
+        "command": "python \"C:\\Users\\Win\\.claude\\hooks\\stop-notify.py\"",
+        "timeout": 10
+      }]
+    }]
+  }
+}
+```
+
+간단해 보였지만, Windows 환경에서 동작하게 만드는 데 총 5번의 시행착오가 있었습니다.
+
+## 시도 1: ctypes MessageBoxW + 스레드 (Claude Code 무한 대기)
+
+가장 직관적인 접근부터 시도했습니다. Windows API로 MessageBox를 띄우되,
+스레드에서 실행하면 될 거라고 생각했습니다.
+
+```python
+import ctypes, threading
+
+def _auto_close_msgbox():
+    ctypes.windll.user32.MessageBoxTimeoutW(
+        0, msg, title,
+        0x40 | 0x00040000,  # MB_ICONINFORMATION | MB_SETFOREGROUND
+        0, 30000            # 30초 후 자동 닫힘
+    )
+
+t = threading.Thread(target=_auto_close_msgbox)  # daemon=False (기본)
+t.start()
+t.join()  # MessageBox가 닫힐 때까지 대기
+```
+
+### 결과: Claude Code 전체 멈춤
+
+MessageBox는 정상적으로 화면에 떴습니다. 하지만 **확인 버튼을 누르지 않으면 `t.join()`이 영원히 블로킹**됩니다.
+hook 스크립트가 끝나지 않으니 Claude Code도 다음 응답을 시작하지 못합니다.
+
+결과적으로 **Claude Code가 완전히 멈춘 상태**가 되었습니다.
+확인 버튼을 누르기 전까지 어떤 입력도 받지 않고, 커서만 깜빡이는 상황이었습니다.
+다른 작업을 하다가 알림을 못 보면 Claude Code가 무한정 대기하는 셈입니다.
+
+**교훈**: hook 스크립트에서 사용자 입력을 기다리면 안 된다. hook은 빠르게 끝나야 한다.
+
+## 시도 2: PowerShell Toast Notification
+
+blocking 문제를 피하기 위해 Windows 10의 네이티브 토스트 알림으로 방향을 바꿨습니다.
+토스트는 자체적으로 표시되고 사라지므로 사용자 입력을 기다릴 필요가 없습니다.
+
+```python
+ps_script = (
+    "[Windows.UI.Notifications.ToastNotificationManager, "
+    "Windows.UI.Notifications, ContentType = WindowsRuntime] > $null; "
+    "..."
+)
+subprocess.Popen(["powershell", "-NoProfile", "-Command", ps_script])
+```
+
+### 결과: AccessViolationException
+
+```
+System.AccessViolationException: 보호된 메모리를 읽거나 쓰려고 했습니다.
+```
+
+PowerShell 5.1에서 WinRT API를 호출할 때 발생하는 알려진 버그입니다.
+`Popen`으로 비동기 실행했기 때문에 Python 쪽에서는 에러를 감지하지 못하고,
+fallback 메서드로 넘어가지 않았습니다.
+
+**교훈**: 비동기로 실행한 프로세스의 에러는 감지할 수 없다. `subprocess.run()`으로 확인하거나, fallback 순서를 재설계해야 한다.
+
+## 시도 3: ctypes MessageBoxTimeoutW (daemon 스레드)
+
+다시 ctypes로 돌아오되, 시도 1의 무한 대기 문제를 해결하기 위해
+`daemon=True` 스레드와 짧은 `join(timeout)`을 사용했습니다.
+
+```python
+t = threading.Thread(target=_auto_close_msgbox, daemon=True)
+t.start()
+t.join(timeout=0.5)  # 0.5초 후 스크립트 종료
+```
+
+### 결과: hook 종료 시 MessageBox도 사라짐
+
+`daemon=True` 스레드는 메인 프로세스가 종료되면 함께 죽습니다.
+hook 스크립트가 0.5초 후 종료되면서 daemon 스레드도 함께 죽었습니다.
+30초를 기다릴 새도 없이 MessageBox가 사라졌습니다.
+
+**교훈**: 스레드 기반 접근은 진퇴양난이다. `join()` 없이는 daemon이 죽고, `join()`하면 Claude Code가 블로킹된다. 근본적으로 별도 프로세스가 필요하다.
+
+## 시도 4: subprocess + DETACHED_PROCESS
+
+별도 Python 프로세스를 spawn하되, 완전히 분리(detach)하려 했습니다.
+
+```python
+subprocess.Popen(
+    [sys.executable, "-c", script],
+    creationflags=0x00000008 | 0x00000200,  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+)
+```
+
+### 결과: 프로세스는 실행되지만 MessageBox가 안 보임
+
+`DETACHED_PROCESS` 플래그는 프로세스를 콘솔에서 분리하지만,
+**GUI 윈도우 생성도 차단**합니다. MessageBox는 GUI 윈도우이므로 화면에 표시되지 않았습니다.
+
+디버그 로그에는 PID가 정상 생성되고, 에러도 없어서 원인 파악에 시간이 걸렸습니다.
+
+**교훈**: `DETACHED_PROCESS`는 콘솔 분리용이지, GUI 분리용이 아니다.
+
+## 시도 5: CREATE_NO_WINDOW (최종 해결)
+
+```python
+subprocess.Popen(
+    [sys.executable, "-c", script],
+    creationflags=0x08000000,  # CREATE_NO_WINDOW
+)
+```
+
+`CREATE_NO_WINDOW`(0x08000000)는 **콘솔 창 없이 실행하되 GUI는 정상 표시**합니다.
+hook 스크립트가 종료되어도 자식 프로세스는 독립적으로 살아남아 MessageBox가 30초간 유지됩니다.
+
+### Windows creationflags 정리
+
+| 플래그 | 값 | 콘솔 | GUI | 부모 종속 |
+|--------|-----|------|-----|-----------|
+| 없음 (기본) | 0 | 부모 공유 | O | O |
+| `CREATE_NEW_CONSOLE` | 0x10 | 새 콘솔 | O | X |
+| `DETACHED_PROCESS` | 0x08 | 없음 | **X** | X |
+| `CREATE_NO_WINDOW` | 0x08000000 | 없음 | **O** | X |
+
+## 추가 문제: 특수문자 이스케이프
+
+MessageBox에 표시할 메시지를 자식 프로세스에 인라인 문자열로 전달하면,
+`"`, `\`, 개행 등이 Python 구문을 깨뜨릴 수 있었습니다.
+
+```python
+# 위험한 방식
+script = f'ctypes.windll.user32.MessageBoxTimeoutW(0, "{msg}", ...)'
+# msg에 " 가 포함되면 → SyntaxError
+```
+
+### 해결: base64 인코딩
+
+```python
+import base64
+
+b64_title = base64.b64encode(title.encode('utf-8')).decode('ascii')
+b64_msg = base64.b64encode(msg.encode('utf-8')).decode('ascii')
+script = (
+    "import ctypes, base64; "
+    f"t=base64.b64decode('{b64_title}').decode('utf-8'); "
+    f"m=base64.b64decode('{b64_msg}').decode('utf-8'); "
+    "ctypes.windll.user32.MessageBoxTimeoutW(0, m, t, 0x40 | 0x00040000, 0, 30000)"
+)
+```
+
+base64는 `[A-Za-z0-9+/=]`만 사용하므로 어떤 문자가 와도 깨지지 않습니다.
+
+## 추가 문제: JSON 파싱 strict 모드
+
+Claude Code가 stdin으로 보내는 JSON에 제어 문자(개행, 탭)가 포함될 수 있습니다.
+Python의 `json.load()`는 기본적으로 strict 모드라 이를 거부합니다.
+
+```python
+# Before — 제어 문자 포함 시 실패
+data = json.load(sys.stdin)
+
+# After — 제어 문자 허용
+raw = sys.stdin.read()
+data = json.loads(raw, strict=False)
+```
+
+## 최종 코드
+
+```python
+def _show_notification(title, msg):
+    b64_title = base64.b64encode(title.encode('utf-8')).decode('ascii')
+    b64_msg = base64.b64encode(msg.encode('utf-8')).decode('ascii')
+    script = (
+        "import ctypes, base64; "
+        f"t=base64.b64decode('{b64_title}').decode('utf-8'); "
+        f"m=base64.b64decode('{b64_msg}').decode('utf-8'); "
+        "ctypes.windll.user32.MessageBoxTimeoutW(0, m, t, "
+        "0x40 | 0x00040000, 0, 30000)"
+    )
+    subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=0x08000000,  # CREATE_NO_WINDOW
+    )
+```
+
+동작 흐름:
+
+1. Claude Code 응답 완료 → Stop hook 발동
+2. `stop-notify.py` 실행 → stdin JSON 파싱
+3. 마크다운 제거 + 250자 truncate
+4. base64 인코딩 → `CREATE_NO_WINDOW`로 자식 프로세스 spawn
+5. MessageBox 30초 표시 → 자동 닫힘
+6. hook 스크립트 즉시 종료 → Claude Code 블로킹 없음
+
+## 디버깅 팁
+
+문제 발생 시 디버그 로그를 확인합니다.
+
+```python
+LOG_FILE = os.path.join(os.path.dirname(__file__), "stop-notify-debug.log")
+
+def log(msg):
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        from datetime import datetime
+        f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+```
+
+실제로 이 로그 덕분에 "hook은 실행됐지만 MessageBox가 안 뜨는" 원인을 빠르게 찾을 수 있었습니다.
+
+## 정리
+
+| 문제 | 원인 | 해결 |
+|------|------|------|
+| Claude Code 무한 대기 | `t.join()`이 MessageBox 닫힐 때까지 블로킹 | 비동기 처리로 전환 |
+| Toast 안 뜸 | PowerShell 5.1 WinRT 버그 | ctypes 직접 호출로 전환 |
+| MessageBox 즉시 사라짐 | daemon 스레드 → 부모 종료 시 함께 죽음 | 별도 프로세스 spawn |
+| 프로세스는 뜨는데 화면에 안 보임 | `DETACHED_PROCESS`가 GUI 차단 | `CREATE_NO_WINDOW` 사용 |
+| 특수문자로 구문 오류 | 인라인 문자열 이스케이프 실패 | base64 인코딩 |
+| JSON 파싱 실패 | strict 모드가 제어 문자 거부 | `strict=False` |
+
+Windows에서 "알림 하나 띄우기"가 이렇게 복잡할 줄 몰랐습니다.
+하지만 Claude Code의 디버깅 능력 덕분에 각 문제의 원인을 빠르게 파악하고 해결할 수 있었습니다.

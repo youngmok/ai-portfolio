@@ -17,6 +17,11 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/ai-portfolio-mono/</loc>
+    <lastmod>2026-03</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://youngmok.github.io/ai-portfolio/projects/ai-portfolio/</loc>
     <lastmod>2026-02</lastmod>
     <priority>0.8</priority>
@@ -24,6 +29,11 @@
   <url>
     <loc>https://youngmok.github.io/ai-portfolio/projects/batch-app/</loc>
     <lastmod>2026-02</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/claude-dashboard/</loc>
+    <lastmod>2026-03</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
@@ -37,8 +47,18 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/mcp-db-query/</loc>
+    <lastmod>2026-02</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://youngmok.github.io/ai-portfolio/projects/personal-ai/</loc>
     <lastmod>2026-02</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/portfolio-analytics/</loc>
+    <lastmod>2026-03</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
@@ -47,8 +67,23 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://youngmok.github.io/ai-portfolio/projects/youtube-search/</loc>
+    <lastmod>2026-02</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://youngmok.github.io/ai-portfolio/blog/api-key-management/</loc>
     <lastmod>2026-02-19</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-ai-agent-management-system/</loc>
+    <lastmod>2026-03-02</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-ai-portfolio-mono/</loc>
+    <lastmod>2026-03-01</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
@@ -67,8 +102,18 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-mcp-db-query/</loc>
+    <lastmod>2026-02-28</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://youngmok.github.io/ai-portfolio/blog/building-personal-ai/</loc>
     <lastmod>2026-02-23</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-portfolio-analytics/</loc>
+    <lastmod>2026-02-25</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
@@ -77,8 +122,23 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/building-youtube-search/</loc>
+    <lastmod>2026-02-26</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/claude-code-stop-hook-windows/</loc>
+    <lastmod>2026-03-05</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://youngmok.github.io/ai-portfolio/blog/deploying-to-github-pages/</loc>
     <lastmod>2026-02-13</lastmod>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://youngmok.github.io/ai-portfolio/blog/gitops-batch-app-k3s-argocd/</loc>
+    <lastmod>2026-03-05</lastmod>
     <priority>0.8</priority>
   </url>
   <url>
